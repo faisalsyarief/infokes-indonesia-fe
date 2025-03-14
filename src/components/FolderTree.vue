@@ -1,26 +1,21 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, computed, defineProps } from "vue";
 import { useExplorerStore } from "../stores/counter";
 
-interface Folder {
-  id: number;
-  name: string;
-  parent_id?: number | null;
-}
-
-const props = defineProps<{ folders: Folder[] }>();
 const store = useExplorerStore();
+const propsFolders = defineProps(["folders"]);
+const displayedFolders = computed(() => propsFolders.folders);
 
-onMounted(() => {
-  store.fetchFolders();
-});
+// onMounted(() => {
+//   store.fetchFolders();
+// });
 </script>
 
 <template>
   <div class="w-64 bg-gray-100 p-4 h-screen overflow-auto">
     <h2 class="font-bold text-lg mb-2">Folder Struktur</h2>
     <ul>
-      <li v-for="folder in store.folders" :key="folder.id">
+      <li v-for="folder in displayedFolders" :key="folder.id">
         <div class="flex items-center">
           <button @click="store.toggleFolder(folder.id)" class="mr-2">
             <img alt="Folder" class="logo"
@@ -51,15 +46,3 @@ onMounted(() => {
     </ul>
   </div>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.5s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style>

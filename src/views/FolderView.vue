@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { onMounted } from "vue";
 import FolderTree from "../components/FolderTree.vue";
 import FolderView from "../components/FolderView.vue";
 import { useExplorerStore } from "../stores/counter";
 
 const store = useExplorerStore();
-const searchQuery = ref("");
 
 onMounted(() => {
   store.fetchFolders();
@@ -18,6 +17,6 @@ onMounted(() => {
       <input v-model="store.searchQuery" placeholder="Cari folder..." class="w-full p-2 border rounded mb-2" />
       <FolderTree :folders="store.filteredFolders" />
     </div>
-    <FolderView />
+    <FolderView :folders="store.filteredFolders" />
   </div>
 </template>

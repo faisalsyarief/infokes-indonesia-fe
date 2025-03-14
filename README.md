@@ -38,6 +38,10 @@ bun run build
 bun lint
 ```
 
+To run:
+```bash
+bun run dev
+```
 
 ====================
 # Spesifikasi Teknis

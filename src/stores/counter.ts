@@ -1,11 +1,28 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { ref, computed } from "vue";
+
 import axios from "axios";
 
+interface Folder {
+  id: number;
+  name: string;
+  parent_id: number | null;
+}
+
+interface File {
+  id: number;
+  name: string;
+  folder_id?: number | null;
+}
+
 export const useExplorerStore = defineStore("explorer", () => {
-  const folders = ref([]);
-  const subFolders = ref([]);
-  const files = ref([]);
+  // const folders = ref([]);
+  const folders = ref<Folder[]>([]);
+  // const subFolders = ref([]);
+  const subFolders = ref<Folder[]>([]);
+  // const files = ref([]);
+  const files = ref<File[]>([]);
+
   const selectedFolderId = ref<number | null>(null);
   const openFolderId = ref<number | null>(null);
   const openFileId = ref<number | null>(null);
@@ -16,7 +33,6 @@ export const useExplorerStore = defineStore("explorer", () => {
   const folderCache = new Map();
   const fileCache = new Map();
 
-
   const API_BASE = "http://localhost:3000";
 
   const api = {
@@ -24,12 +40,12 @@ export const useExplorerStore = defineStore("explorer", () => {
       try {
         const response = await axios.get(`${API_BASE}${url}`);
         if (response.data.rc === "00") {
+          // console.log(response.data.data);
           return response.data.data;
         } else {
-          throw new Error("Gagal memuat data");
+          throw new Error(response.data.message);
         }
       } catch (error) {
-        errorMessage.value = "Terjadi kesalahan saat mengambil data.";
         console.error(error);
         return [];
       }
@@ -38,7 +54,6 @@ export const useExplorerStore = defineStore("explorer", () => {
       try {
         await axios.post(`${API_BASE}${url}`, data);
       } catch (error) {
-        errorMessage.value = "Terjadi kesalahan saat menambahkan data.";
         console.error(error);
       }
     },
@@ -46,14 +61,18 @@ export const useExplorerStore = defineStore("explorer", () => {
       try {
         await axios.delete(`${API_BASE}${url}`);
       } catch (error) {
-        errorMessage.value = "Terjadi kesalahan saat menghapus data.";
         console.error(error);
       }
     },
   };
 
   const fetchFolders = async () => {
-    folders.value = await api.get("/getParentFolders");
+    try {
+      folders.value = await api.get("/getParentFolders");
+    } catch (error) {
+      console.error("error get folder", error);
+      folders.value = [];
+    }
   };
 
   const fetchSubFolders = async (folderId: number) => {
@@ -73,13 +92,13 @@ export const useExplorerStore = defineStore("explorer", () => {
     if (Array.isArray(response) && response.length === 0) {
       const responseFile = await api.get(`/foldersFiles/${folderId}`);
       if (Array.isArray(responseFile) && responseFile.length === 0) {
-        console.warn(`⚠️ Tidak ada subfolder untuk folder ID ${folderId}`);
+        console.warn(`Tidak ada subfolder untuk folder ID ${folderId}`);
         subFolders.value = [{ id: -1, name: "(Tidak ada subfile)", parent_id: folderId }];
       } else {
-        subFolders.value = responseFile.map(file => ({
+        subFolders.value = responseFile.data.map((file: File) => ({
           id: -1,
           name: file.name,
-          parent_id: file.parent_id
+          parent_id: file.folder_id
         }));;
       }
     } else {
@@ -113,8 +132,8 @@ export const useExplorerStore = defineStore("explorer", () => {
 
     const response = await api.get(`/foldersFiles/${fileId}`);
     if (Array.isArray(response) && response.length === 0) {
-      console.warn(`⚠️ Tidak ada subfile untuk folder ID ${fileId}`);
-      files.value = [{ id: -1, name: "(Tidak ada subfile)", parent_id: fileId }];
+      console.warn(`Tidak ada subfile untuk folder ID ${fileId}`);
+      files.value = [{ id: -1, name: "(Tidak ada subfile)", folder_id: fileId }];
     } else {
       files.value = response;
     }
@@ -123,7 +142,6 @@ export const useExplorerStore = defineStore("explorer", () => {
   };
 
   const toggleFile = (fileId: number) => {
-    console.log('xxx' + openFileId.value);
     if (openFileId.value === fileId) {
       openFileId.value = null;
     } else {
@@ -135,22 +153,33 @@ export const useExplorerStore = defineStore("explorer", () => {
   const addFolder = async (folderName: string) => {
     if (!folderName.trim() || selectedFolderId.value === null) return;
     await api.post("/folders", { name: folderName, parent_id: selectedFolderId.value });
-    await fetchSubFolders(selectedFolderId.value);
+    reloadPage();
   };
 
   const deleteFolder = async (folderId: number) => {
     if (!folderId) return;
     const response = await api.delete(`/folders/${folderId}`);
 
-    if (Array.isArray(response) && response.length === 0) {
-      console.warn(`⚠️ Tidak ada subfile untuk folder ID ${folderId}`);
+    try {
+      if (Array.isArray(response) && response.length === 0) {
+        console.warn(`Tidak ada subfile untuk folder ID ${folderId}`);
+      }
+      if (selectedFolderId.value === folderId) {
+        selectedFolderId.value = null;
+        subFolders.value = [];
+      } else {
+        reloadPage();
+        await fetchSubFolders(selectedFolderId.value!);
+      }
+    } catch (error) {
+      console.error(`Gagal menghapus folder ID ${folderId}:`, error);
     }
-    await fetchSubFolders(selectedFolderId.value!);
   };
 
   const deleteFile = async (fileId: number) => {
     if (!fileId) return;
     await api.delete(`/files/${fileId}`);
+    reloadPage();
     await fetchSubFolders(selectedFolderId.value!);
   };
 
@@ -162,6 +191,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       file_type: "txt",
       size: 1024,
     });
+    reloadPage();
     await fetchFiles(selectedFolderId.value);
   };
 
@@ -180,11 +210,15 @@ export const useExplorerStore = defineStore("explorer", () => {
     fileCache.set(folderId, files.value);
   };
 
-  const filteredFolders = () => {
+  const filteredFolders = computed(() => {
     if (!searchQuery.value) return folders.value;
     return folders.value.filter((folder) =>
       folder.name.toLowerCase().includes(searchQuery.value.toLowerCase())
     );
+  });
+
+  const reloadPage = () => {
+    window.location.reload();
   };
 
   return {
@@ -197,6 +231,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     searchQuery,
     errorMessage,
     newFolderName,
+    filteredFolders,
     fetchFolders,
     fetchSubFolders,
     fetchFiles,
@@ -205,7 +240,6 @@ export const useExplorerStore = defineStore("explorer", () => {
     addFile,
     deleteFile,
     toggleFolder,
-    toggleFile,
-    filteredFolders,
+    toggleFile
   };
 });
